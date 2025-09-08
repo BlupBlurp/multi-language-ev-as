@@ -20,9 +20,12 @@ from function_definitions import FunctionDefinition
 from msbt import MsbtFile
 from validator import Validator
 
+
 def jsonDumpUnity(tree, ofpath):
-    with open(ofpath, "w") as ofobj:
-        json.dump(tree, ofobj, indent=4)
+    with open(ofpath, "w", encoding="utf-8") as ofobj:
+        # Added ensure_ascii=False to preserve special characters (Spanish accents, etc.)
+        json.dump(tree, ofobj, indent=4, ensure_ascii=False)
+
 
 def convertToUnity(ifpath, scripts, strList, linkerLabels):
     # FunctionDefinition.load("ev_scripts.json")
@@ -36,12 +39,7 @@ def convertToUnity(ifpath, scripts, strList, linkerLabels):
         for cmd in script:
             evCmdType = cmd.cmdType
             # funcDef = FunctionDefinition.getFunctionDefinition(evCmdType)
-            scriptArgs = [
-                {
-                    "argType" : EvArgType.CmdType,
-                    "data" : evCmdType.value
-                }
-            ]
+            scriptArgs = [{"argType": EvArgType.CmdType, "data": evCmdType.value}]
 
             validator.validate_command(cmd, strList, linkerLabels)
 
@@ -51,29 +49,21 @@ def convertToUnity(ifpath, scripts, strList, linkerLabels):
             # noMaxArgs = funcDef.maxArgs()
             # if len(cmd.args) > noMaxArgs:
             #     print("[Warning] {}:{}  Too many arguments passed in. At most {} allowed. {} provided.".format(cmd.line, cmd.column, noMaxArgs, len(cmd.args)))
-            
+
             for i, arg in enumerate(cmd.args):
                 # argDef = funcDef.validArgs[i]
-                #if arg.argType not in argDef.validArgTypes:
+                # if arg.argType not in argDef.validArgTypes:
                 #    print("[Warning] {} {}:{} invalid argument".format(ifpath, arg.line, arg.column))
-                
 
-                scriptArgs.append({
-                    "argType" : arg.argType,
-                    "data" : arg.data
-                })
-            
-            scriptCommands.append({
-                "Arg" : scriptArgs
-            })
+                scriptArgs.append({"argType": arg.argType, "data": arg.data})
 
-        treeScripts.append({
-            "Label" : label,
-            "Commands" : scriptCommands
-        })
+            scriptCommands.append({"Arg": scriptArgs})
+
+        treeScripts.append({"Label": label, "Commands": scriptCommands})
     tree["Scripts"] = treeScripts
     tree["StrList"] = strList
     return tree
+
 
 def repackUnity(ofpath, script, unityTree):
     with open(ofpath, "rb") as ifobj:
@@ -83,31 +73,33 @@ def repackUnity(ofpath, script, unityTree):
             if obj.type.name == "MonoBehaviour":
                 data = obj.read()
                 if obj.serialized_type.nodes:
-                        tree = obj.read_typetree()
-                        if data.name == script:
-                            tree.update(unityTree)
-                            obj.save_typetree(tree)
-    
-    
+                    tree = obj.read_typetree()
+                    if data.name == script:
+                        tree.update(unityTree)
+                        obj.save_typetree(tree)
+
     with open(ofpath, "wb") as ofobj:
         # Thanks Aldo796
-        ofobj.write(bundle.file.save(packer=(64,2)))
+        ofobj.write(bundle.file.save(packer=(64, 2)))
+
 
 def updateLabelDatas(path, lang, labelDatas):
     print("Updating message files using Macro information.")
     msbt_files = {}
     for data_file in DATA_FILES:
         ifpath = os.path.join(path, "{}_{}.json".format(lang, data_file))
-        with open(ifpath, "r", encoding='utf-8') as ifobj:
+        with open(ifpath, "r", encoding="utf-8") as ifobj:
             try:
                 msbt_file = MsbtFile.Schema().loads(ifobj.read())
             except marshmallow.exceptions.ValidationError as exc:
-                print("Failed to load: {}. Unable to update message files".format(ifpath))
+                print(
+                    "Failed to load: {}. Unable to update message files".format(ifpath)
+                )
                 print(exc)
                 return
             msbt_files[data_file] = msbt_file
     for scriptMessage, labelData in labelDatas.items():
-        splitMsg = scriptMessage.split('%')
+        splitMsg = scriptMessage.split("%")
         dataFile = splitMsg[0]
         unlocalized_key = splitMsg[1]
         msbt_file: MsbtFile = msbt_files[dataFile]
@@ -125,12 +117,17 @@ def updateLabelDatas(path, lang, labelDatas):
         labelData.labelIndex = arrayIndex
         labelData.arrayIndex = arrayIndex
         msbt_file.labelDataArray.append(labelData)
-    
+
     for data_file in DATA_FILES:
         ifpath = os.path.join(path, "{}_{}.json".format(lang, data_file))
-        with open(ifpath, "w", encoding='utf-8') as ofobj:
+        with open(ifpath, "w", encoding="utf-8") as ofobj:
             msbt_file = msbt_files[data_file]
-            json.dump(MsbtFile.Schema().dump(msbt_file), ofobj, indent=4, ensure_ascii=False)
+            # Fixed encoding issue - ensure_ascii=False keeps Spanish characters readable
+            # instead of converting them to \u00bf etc.
+            json.dump(
+                MsbtFile.Schema().dump(msbt_file), ofobj, indent=4, ensure_ascii=False
+            )
+
 
 def assemble(ifpath, ofpath, script):
     input_stream = FileStream(ifpath)
@@ -142,32 +139,36 @@ def assemble(ifpath, ofpath, script):
     assembler = evAssembler()
     walker = ParseTreeWalker()
     walker.walk(assembler, tree)
-    unityTree = convertToUnity(assembler.scripts, assembler.strTbl, assembler.scripts.keys())
+    unityTree = convertToUnity(
+        assembler.scripts, assembler.strTbl, assembler.scripts.keys()
+    )
     repackUnity(ofpath, script, unityTree)
+
 
 def repackUnityAll(ifpath, ofpath, scripts):
     os.makedirs("bin", exist_ok=True)
-    
-    with open(ifpath, "rb") as ifobj:
-            bundle = UnityPy.load(ifpath)
 
-            for obj in bundle.objects:
-                if obj.type.name == "MonoBehaviour":
-                    data = obj.read()
-                    if obj.serialized_type.nodes:
-                            tree = obj.read_typetree()
-                            if data.name in scripts:
-                                unityTree = scripts[data.name]
-                                tree.update(unityTree)
-                                obj.save_typetree(tree)
-    
+    with open(ifpath, "rb") as ifobj:
+        bundle = UnityPy.load(ifpath)
+
+        for obj in bundle.objects:
+            if obj.type.name == "MonoBehaviour":
+                data = obj.read()
+                if obj.serialized_type.nodes:
+                    tree = obj.read_typetree()
+                    if data.name in scripts:
+                        unityTree = scripts[data.name]
+                        tree.update(unityTree)
+                        obj.save_typetree(tree)
+
     with open(ofpath, "wb") as ofobj:
         # Thanks Aldo796
-        ofobj.write(bundle.file.save(packer=(64,2)))
+        ofobj.write(bundle.file.save(packer=(64, 2)))
+
 
 def load_definitions():
     ifpath = "scripts/global_defines.ev"
-    input_stream = FileStream(ifpath, encoding='utf-8')
+    input_stream = FileStream(ifpath, encoding="utf-8")
     lexer = evLexer(input_stream)
     stream = CommonTokenStream(lexer)
     parser = evParser(stream)
@@ -178,6 +179,7 @@ def load_definitions():
     walker.walk(assembler, tree)
 
     return assembler
+
 
 def loadCoreLabels(ifpath, ignoreNames):
     linkerLabels = []
@@ -201,7 +203,30 @@ def loadCoreLabels(ifpath, ignoreNames):
 
     return linkerLabels
 
-def assemble_all():
+
+def assemble_all(language="english"):
+    print(f"Using language: {language}")
+
+    # Check if the requested language files actually exist before doing anything
+    language_export_path = f"AssetFolder/{language}_Export"
+    if not os.path.exists(language_export_path):
+        print(f"Error: Language export folder '{language_export_path}' not found!")
+        print("Available languages:")
+        asset_folder = "AssetFolder"
+        if os.path.exists(asset_folder):
+            for item in os.listdir(asset_folder):
+                if item.endswith("_Export") and os.path.isdir(
+                    os.path.join(asset_folder, item)
+                ):
+                    lang_name = item.replace("_Export", "")
+                    print(f"  - {lang_name}")
+        return
+
+    # Tell GDataManager which language we're using so it loads the right message files
+    from gdatamanger import GDataManager
+
+    GDataManager.setLanguage(language)
+
     scripts = {}
     labelDatas = {}
     flags = {}
@@ -212,7 +237,7 @@ def assemble_all():
         flags = assembler.flags
         works = assembler.works
         sysflags = assembler.sysflags
-    
+
     commands = {}
     if os.path.exists("commands.json"):
         print("Loading external commands reference from commands.json")
@@ -222,7 +247,9 @@ def assemble_all():
                 try:
                     commands[entry["Name"]] = entry["Id"]
                 except KeyError:
-                    print("Unable to load commands.json, missing either Id or Name key. Defaulting to known commands")
+                    print(
+                        "Unable to load commands.json, missing either Id or Name key. Defaulting to known commands"
+                    )
 
     linkerLabels = []
     toConvertList = []
@@ -233,13 +260,19 @@ def assemble_all():
         basename = os.path.splitext(basename)[0]
         if basename == "global_defines.ev":
             continue
-        input_stream = FileStream(ifpath, encoding='utf-8')
+        input_stream = FileStream(ifpath, encoding="utf-8")
         lexer = evLexer(input_stream)
         stream = CommonTokenStream(lexer)
         parser = evParser(stream)
         tree = parser.prog()
 
-        assembler = evAssembler(ifpath, commands=copy(commands), flags=copy(flags), works=copy(works), sysflags=copy(sysflags))
+        assembler = evAssembler(
+            ifpath,
+            commands=copy(commands),
+            flags=copy(flags),
+            works=copy(works),
+            sysflags=copy(sysflags),
+        )
         walker = ParseTreeWalker()
         walker.walk(assembler, tree)
         toConvertList.append((ifpath, assembler.scripts, assembler.strTbl, basename))
@@ -248,21 +281,36 @@ def assemble_all():
         ignoreList.append(basename)
     linkerLabels.extend(loadCoreLabels("Dpr/ev_script", ignoreList))
     for toConvert in toConvertList:
-        unityTree = convertToUnity(toConvert[0], toConvert[1], toConvert[2], linkerLabels)
+        unityTree = convertToUnity(
+            toConvert[0], toConvert[1], toConvert[2], linkerLabels
+        )
         scripts[toConvert[3]] = unityTree
     repackUnityAll("Dpr/ev_script", "bin/ev_script", scripts)
-    updateLabelDatas("AssetFolder/english_Export", "english", labelDatas)
+    # Use the selected language instead of hardcoded "english" for dialog updates
+    updateLabelDatas(f"AssetFolder/{language}_Export", language, labelDatas)
+
 
 def main():
-    # parser = ArgumentParser()
+    parser = ArgumentParser()
+    # Added language selection - now you can choose spanish/french/german instead of just english
+    parser.add_argument(
+        "-l",
+        "--language",
+        dest="language",
+        action="store",
+        default="english",
+        choices=["english", "spanish", "french", "german"],
+        help="Language to use for dialog files (default: english)",
+    )
     # parser.add_argument("-i", "--input", dest='ifpath', action='store', required=True)
     # parser.add_argument("-o", "--output", dest='ofpath', action='store', required=True)
     # parser.add_argument("-s", "--script", dest='script', action='store', required=True)
 
-    # vargs = parser.parse_args()
+    vargs = parser.parse_args()
     # assemble(vargs.ifpath, vargs.ofpath, vargs.script)
-    assemble_all()
+    assemble_all(vargs.language)
     print("Assembly finished")
+
 
 if __name__ == "__main__":
     main()
