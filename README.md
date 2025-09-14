@@ -25,7 +25,7 @@ Example: `python src/ev_as.py --language spanish`
 **Language file requirements:**
 
 - Language files must be inside a folder called `AssetFolder`
-- Files must be in language-specific export folders: `spanish_Export`, `english_Export`, `french_Export`, or `german_Export`
+- Files must be in language-specific export folders: `spanish_Export`, `english_Export`, `french_Export`, `german_Export`
 - This follows the same folder structure as the BDSP-Repacker
 
 ## ev-parse
